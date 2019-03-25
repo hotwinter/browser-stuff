@@ -1,0 +1,87 @@
+diff --git a/src/bootstrapper.cc b/src/bootstrapper.cc
+index fd0ed82770..84d4edac06 100644
+--- a/src/bootstrapper.cc
++++ b/src/bootstrapper.cc
+@@ -1779,6 +1779,8 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
+                           Builtins::kArrayPrototypeToLocaleString, 0, false);
+     SimpleInstallFunction(isolate_, proto, "toString",
+                           Builtins::kArrayPrototypeToString, 0, false);
++    SimpleInstallFunction(isolate_, proto, "wtf",
++                          Builtins::kArrayWtf, 2, false);
+   }
+ 
+   {  // --- A r r a y I t e r a t o r ---
+diff --git a/src/builtins/builtins-array.cc b/src/builtins/builtins-array.cc
+index 1c385dd161..4f6fba30a8 100644
+--- a/src/builtins/builtins-array.cc
++++ b/src/builtins/builtins-array.cc
+@@ -242,6 +242,32 @@ V8_WARN_UNUSED_RESULT bool TryFastArrayFill(
+ }
+ }  // namespace
+ 
++BUILTIN(ArrayWtf) { 
++  HandleScope scope(isolate);
++
++  if (args.length() < 2)
++    return isolate->heap()->ToBoolean(false);
++
++  Handle<JSReceiver> receiver;
++  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
++      isolate, receiver, Object::ToObject(isolate, args.receiver()));
++
++  uint32_t index;
++  Handle<Object> num;
++  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
++      isolate, num, Object::ToInteger(isolate, args.at<Object>(1)));
++  if (!(num->IsSmi())) {
++    return isolate->heap()->ToBoolean(false);
++  }
++  index = Smi::ToInt(*num);
++
++  Handle<JSArray> array = Handle<JSArray>::cast(receiver);
++  ElementsAccessor* accessor = array->GetElementsAccessor();
++  accessor->Set(array, index, args[2]);
++
++  return isolate->heap()->ToBoolean(true);
++}
++
+ BUILTIN(ArrayPrototypeFill) {
+   HandleScope scope(isolate);
+ 
+diff --git a/src/builtins/builtins-definitions.h b/src/builtins/builtins-definitions.h
+index b56e571c9d..c9fe6f7d39 100644
+--- a/src/builtins/builtins-definitions.h
++++ b/src/builtins/builtins-definitions.h
+@@ -423,6 +423,7 @@ namespace internal {
+   TFJ(ArrayPrototypeFlat, SharedFunctionInfo::kDontAdaptArgumentsSentinel)     \
+   /* https://tc39.github.io/proposal-flatMap/#sec-Array.prototype.flatMap */   \
+   TFJ(ArrayPrototypeFlatMap, SharedFunctionInfo::kDontAdaptArgumentsSentinel)  \
++  CPP(ArrayWtf)                                                                \
+                                                                                \
+   /* ArrayBuffer */                                                            \
+   /* ES #sec-arraybuffer-constructor */                                        \
+diff --git a/src/compiler/typer.cc b/src/compiler/typer.cc
+index 4957420ee1..08d3fda4e5 100644
+--- a/src/compiler/typer.cc
++++ b/src/compiler/typer.cc
+@@ -1618,6 +1618,8 @@ Type Typer::Visitor::JSCallTyper(Type fun, Typer* t) {
+       return Type::Receiver();
+     case BuiltinFunctionId::kArrayUnshift:
+       return t->cache_.kPositiveSafeInteger;
++    case BuiltinFunctionId::kArrayWtf:
++      return Type::Boolean();
+ 
+     // ArrayBuffer functions.
+     case BuiltinFunctionId::kArrayBufferIsView:
+diff --git a/src/objects/builtin-function-id.h b/src/objects/builtin-function-id.h
+index 5d1dd445ea..318423732d 100644
+--- a/src/objects/builtin-function-id.h
++++ b/src/objects/builtin-function-id.h
+@@ -40,6 +40,7 @@ namespace internal {
+   V(Array.prototype, some, ArraySome)                       \
+   V(Array.prototype, splice, ArraySplice)                   \
+   V(Array.prototype, unshift, ArrayUnshift)                 \
++  V(Array.prototype, wtf, ArrayWtf)                         \
+   V(Date, now, DateNow)                                     \
+   V(Date.prototype, getDate, DateGetDate)                   \
+   V(Date.prototype, getDay, DateGetDay)                     \
